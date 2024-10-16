@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Real-Time Object Detector with Distance Estimation</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #f6f8fd 0%, #e9f0f8 100%);
+            min-height: 100vh;
+            transition: all 0.3s ease;
+        }
+
+        .neumorphic {
+            background: #f0f4f8;
+            box-shadow: 8px 8px 16px #d1d9e6, -8px -8px 16px #ffffff;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-neumorphic {
+            background: linear-gradient(145deg, #e6e6e6, #ffffff);
+            box-shadow: 5px 5px 10px #d1d9e6, -5px -5px 10px #ffffff;
+            border: none;
+            border-radius: 10px;
+            color: #4a5568;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-neumorphic:hover {
+            box-shadow: inset 5px 5px 10px #d1d9e6, inset -5px -5px 10px #ffffff;
+        }
+
+        #video, #canvas, #uploadedImage {
+            border-radius: 20px;
+            box-shadow: inset 5px 5px 10px #d1d9e6, inset -5px -5px 10px #ffffff;
+            transition: all 0.3s ease;
+        }
+
+        .result-item {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 10px;
+            margin: 10px 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .dark-mode {
+            background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+            color: #e2e8f0;
+        }
+
+        .dark-mode .neumorphic {
+            background: #2d3748;
+            box-shadow: 8px 8px 16px #1a202c, -8px -8px 16px #3a4a63;
+        }
+
+        .dark-mode .btn-neumorphic {
+            background: linear-gradient(145deg, #2d3748, #3a4a63);
+            box-shadow: 5px 5px 10px #1a202c, -5px -5px 10px #3a4a63;
+            color: #e2e8f0;
+        }
+
+        .dark-mode .btn-neumorphic:hover {
+            box-shadow: inset 5px 5px 10px #1a202c, inset -5px -5px 10px #3a4a63;
+        }
+
+        .dark-mode #video, .dark-mode #canvas, .dark-mode #uploadedImage {
+            box-shadow: inset 5px 5px 10px #1a202c, inset -5px -5px 10px #3a4a63;
+        }
+
+        .dark-mode .result-item {
+            background: rgba(45, 55, 72, 0.7);
+            color: #e2e8f0;
+        }
+
+        #uploadedImage {
+            max-width: 100%;
+            height: auto;
+            display: none;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .file-input-label {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="transition-all duration-300 ease-in-out">
+    <div class="container mx-auto px-4 py-8">
+        <div class="neumorphic p-8 max-w-3xl mx-auto">
+            <h1 class="text-4xl font-bold mb-8 text-center">Advanced Object Detection with Distance Estimation</h1>
+            <div class="mb-6 relative">
+                <video id="video" class="w-full max-w-2xl mx-auto" autoplay></video>
+                <canvas id="canvas" class="w-full max-w-2xl mx-auto absolute top-0 left-0 right-0" width="640" height="480"></canvas>
+                <img id="uploadedImage" class="w-full max-w-2xl mx-auto" alt="Uploaded Image">
+            </div>
+            <div class="flex flex-wrap justify-center gap-4 mb-6">
+                <button id="startButton" class="btn-neumorphic px-6 py-3">
+                    <i class="fas fa-play mr-2"></i>Start Detection
+                </button>
+                <button id="stopButton" class="btn-neumorphic px-6 py-3" style="display: none;">
+                    <i class="fas fa-stop mr-2"></i>Stop Detection
+                </button>
+                <button id="captureButton" class="btn-neumorphic px-6 py-3">
+                    <i class="fas fa-camera mr-2"></i>Capture Image
+                </button>
+                <a id="downloadLink" class="btn-neumorphic px-6 py-3 hidden" download="processed_image.png">
+                    <i class="fas fa-download mr-2"></i>Download Image
+                </a>
+                <label for="fileInput" class="btn-neumorphic px-6 py-3 file-input-label">
+                    <i class="fas fa-upload mr-2"></i>Upload Image
+                </label>
+                <input type="file" id="fileInput" accept="image/*">
+                <button id="darkModeToggle" class="btn-neumorphic px-6 py-3">
+                    <i class="fas fa-moon mr-2"></i>Toggle Dark Mode
+                </button>
+            </div>
+            <div id="results" class="mt-6 space-y-2"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const resultsDiv = document.getElementById('results');
+        const downloadLink = document.getElementById('downloadLink');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const captureButton = document.getElementById('captureButton');
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        const fileInput = document.getElementById('fileInput');
+        const uploadedImage = document.getElementById('uploadedImage');
+        let model;
+        let animationId;
+        let isDetecting = false;
+
+        // Focal length of the camera (you may need to adjust this based on your camera)
+        const focalLength = 1000;
+        // Average width of a person in meters (you can adjust this for other objects)
+        const averageWidth = 0.5;
+
+        async function setupCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            return new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    resolve(video);
+                };
+            });
+        }
+
+        async function detectObjects() {
+            if (!isDetecting) return;
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const predictions = await model.detect(canvas);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            displayResults(predictions);
+
+            animationId = requestAnimationFrame(detectObjects);
+        }
+
+        async function detectObjectsInImage(image) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+            const predictions = await model.detect(canvas);
+            displayResults(predictions);
+        }
+
+        function estimateDistance(bbox) {
+            const objectWidthInPixels = bbox[2];
+            const distance = (averageWidth * focalLength) / objectWidthInPixels;
+            return distance.toFixed(2);
+        }
+
+        function displayResults(predictions) {
+            resultsDiv.innerHTML = '';
+
+            predictions.forEach((prediction) => {
+                const distance = estimateDistance(prediction.bbox);
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
+                resultItem.innerHTML = `
+                    <span class="font-semibold">${prediction.class}</span> - 
+                    Confidence: ${(prediction.score * 100).toFixed(2)}% - 
+                    Distance: ${distance} meters
+                `;
+                resultsDiv.appendChild(resultItem);
+
+                ctx.beginPath();
+                ctx.rect(...prediction.bbox);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'red';
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = 'red';
+                ctx.font = '16px Arial';
+                ctx.fillText(`${prediction.class} - ${distance}m`, prediction.bbox[0], prediction.bbox[1] > 20 ? prediction.bbox[1] - 5 : 20);
+            });
+        }
+
+        async function init() {
+            model = await cocoSsd.load();
+            await setupCamera();
+            video.play();
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+        }
+
+        function startDetection() {
+            if (!isDetecting) {
+                isDetecting = true;
+                startButton.style.display = 'none';
+                stopButton.style.display = 'inline-block';
+                video.style.display = 'block';
+                canvas.style.display = 'block';
+                uploadedImage.style.display = 'none';
+                detectObjects();
+            }
+        }
+
+        function stopDetection() {
+            isDetecting = false;
+            startButton.style.display = 'inline-block';
+            stopButton.style.display = 'none';
+            cancelAnimationFrame(animationId);
+        }
+
+        function captureImage() {
+            const img = new Image();
+            img.src = canvas.toDataURL('image/png');
+            downloadLink.href = img.src;
+            downloadLink.download = 'captured_image.png';
+            downloadLink.classList.remove('hidden');
+        }
+
+        startButton.addEventListener('click', startDetection);
+        stopButton.addEventListener('click', stopDetection);
+        captureButton.addEventListener('click', captureImage);
+
+        darkModeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            const icon = darkModeToggle.querySelector('i');
+            icon.classList.toggle('fa-moon');
+            icon.classList.toggle('fa-sun');
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    uploadedImage.onload = function() {
+                        canvas.width = uploadedImage.width;
+                        canvas.height = uploadedImage.height;
+                        uploadedImage.style.display = 'block';
+                        video.style.display = 'none';
+                        canvas.style.display = 'block';
+                        stopDetection();
+                        detectObjectsInImage(uploadedImage);
+                        downloadLink.href = event.target.result;
+                        downloadLink.download = 'uploaded_image.png';
+                        downloadLink.classList.remove('hidden');
+                    }
+                    uploadedImage.src = event.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        init();
+    </script>
+</body>
+</html>
